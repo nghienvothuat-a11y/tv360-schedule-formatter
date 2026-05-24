@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="vi">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>TV360 Schedule Formatter</title>
+    <link rel="stylesheet" href="/app.css">
+  </head>
+  <body>
+    <main class="app-shell">
+      <section class="workspace" aria-labelledby="page-title">
+        <div class="toolbar">
+          <div>
+            <p class="eyebrow">TV360 Viettel</p>
+            <h1 id="page-title">Format lịch phát sóng</h1>
+          </div>
+          <div class="actions">
+            <label class="switch">
+              <input id="sort" type="checkbox" checked>
+              <span>Sắp xếp theo giờ</span>
+            </label>
+            <label class="switch">
+              <input id="minimal" type="checkbox">
+              <span>Cột chính</span>
+            </label>
+          </div>
+        </div>
+
+        <div class="input-grid">
+          <form id="upload-form" class="upload-panel">
+            <label class="drop-zone" for="files">
+              <input id="files" name="files" type="file" accept=".txt,.xlsx" multiple>
+              <span class="drop-title">Chọn file .txt hoặc .xlsx</span>
+              <span class="drop-meta">Có thể chọn nhiều file một lần hoặc chọn bổ sung nhiều lần</span>
+            </label>
+            <div class="selected-files-panel" aria-live="polite">
+              <div class="selected-files-header">
+                <span>Danh sách file đã chọn</span>
+                <button id="clear-files-button" type="button">Xóa tất cả</button>
+              </div>
+              <ul id="selected-files" class="selected-files">
+                <li class="empty-file">Chưa chọn file nào.</li>
+              </ul>
+            </div>
+            <div class="form-row">
+              <label for="output-name">Tên file xuất</label>
+              <input id="output-name" type="text" value="output_lich_tv360.xlsx" autocomplete="off" readonly>
+            </div>
+            <div class="button-row">
+              <button id="preview-button" type="submit">Xem trước</button>
+              <button id="export-button" type="button" class="primary">Xuất Excel</button>
+            </div>
+          </form>
+
+          <aside class="summary-panel" aria-live="polite">
+            <div>
+              <span class="metric-label">File đã chọn</span>
+              <strong id="file-count">0</strong>
+            </div>
+            <div>
+              <span class="metric-label">Chương trình</span>
+              <strong id="row-count">0</strong>
+            </div>
+            <p id="status">Chưa có dữ liệu.</p>
+          </aside>
+        </div>
+
+        <section class="table-shell" aria-label="Kết quả parse">
+          <table>
+            <thead>
+              <tr>
+                <th>STT</th>
+                <th>Thứ ngày</th>
+                <th>Tiêu đề chương trình</th>
+                <th>Thời gian phát sóng</th>
+                <th>Nguồn file</th>
+                <th>Dòng</th>
+              </tr>
+            </thead>
+            <tbody id="results">
+              <tr>
+                <td colspan="6" class="empty">Chọn file rồi bấm Xem trước.</td>
+              </tr>
+            </tbody>
+          </table>
+        </section>
+      </section>
+    </main>
+    <script src="/app.js"></script>
+  </body>
+</html>
