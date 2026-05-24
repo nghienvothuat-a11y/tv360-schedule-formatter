@@ -10,7 +10,7 @@ import io
 import re
 import sys
 import zipfile
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Iterable
 
@@ -43,6 +43,7 @@ XML_TEXT_RE = re.compile(r"<t\b[^>]*>(.*?)</t>", re.DOTALL)
 XML_VALUE_RE = re.compile(r"<v\b[^>]*>(.*?)</v>", re.DOTALL)
 XML_SHARED_ITEM_RE = re.compile(r"<si\b[^>]*>(.*?)</si>", re.DOTALL)
 SUPPORTED_INPUT_EXTENSIONS = {".txt", ".xlsx"}
+DEFAULT_CORRECTIONS_PATH = Path(__file__).resolve().with_name("corrections.txt")
 BRACKETED_TEXT_RES = (
     re.compile(r"\s*\([^()]*\)\s*"),
     re.compile(r"\s*\[[^\[\]]*\]\s*"),
@@ -60,6 +61,9 @@ class ScheduleRow:
     source_line: int
     raw_text: str
     schedule_day: str = ""
+
+
+CorrectionRules = list[tuple[str, str]]
 
 
 def normalize_airtime(match: re.Match[str]) -> str:
@@ -82,6 +86,41 @@ def clean_text(value: str) -> str:
     value = value.replace("\ufeff", " ")
     value = value.replace("\u00a0", " ")
     return SPACE_RE.sub(" ", value).strip()
+
+
+def parse_corrections_text(text: str) -> CorrectionRules:
+    corrections: CorrectionRules = []
+    for line_number, raw_line in enumerate(text.splitlines(), start=1):
+        line = clean_text(raw_line)
+        if not line or line.startswith("#"):
+            continue
+        if "=>" not in line:
+            raise ValueError(f"Dòng corrections {line_number} thiếu dấu =>")
+        wrong, correct = (part.strip() for part in line.split("=>", 1))
+        if not wrong:
+            raise ValueError(f"Dòng corrections {line_number} thiếu từ/cụm từ sai")
+        corrections.append((wrong, correct))
+    return sorted(corrections, key=lambda item: len(item[0]), reverse=True)
+
+
+def load_corrections(path: Path | None = None) -> CorrectionRules:
+    corrections_path = path or DEFAULT_CORRECTIONS_PATH
+    if not corrections_path.is_file():
+        return []
+    return parse_corrections_text(read_text_file(corrections_path))
+
+
+def apply_title_corrections(value: str, corrections: CorrectionRules) -> str:
+    corrected = value
+    for wrong, correct in corrections:
+        corrected = re.sub(re.escape(wrong), correct, corrected, flags=re.IGNORECASE)
+    return clean_text(corrected)
+
+
+def apply_corrections_to_rows(rows: list[ScheduleRow], corrections: CorrectionRules) -> list[ScheduleRow]:
+    if not corrections:
+        return rows
+    return [replace(row, title=apply_title_corrections(row.title, corrections)) for row in rows]
 
 
 def strip_bracketed_text(value: str) -> str:
@@ -690,6 +729,11 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("-o", "--output", default="output/tv360_schedule.xlsx", help="Đường dẫn file .xlsx đầu ra")
     parser.add_argument("--sort", action="store_true", help="Sắp xếp kết quả theo thời gian phát sóng")
     parser.add_argument("--minimal", action="store_true", help="Chỉ xuất các cột chính: STT, thứ ngày, tiêu đề, thời gian")
+    parser.add_argument(
+        "--corrections",
+        default=str(DEFAULT_CORRECTIONS_PATH),
+        help="File từ điển sửa chính tả dạng 'sai => đúng'. Mặc định dùng corrections.txt nếu có",
+    )
     parser.add_argument("--dry-run", action="store_true", help="In kết quả parse ra màn hình, không tạo Excel")
     return parser.parse_args(argv)
 
@@ -705,6 +749,8 @@ def main(argv: list[str]) -> int:
         records: list[ScheduleRow] = []
         for file_path in files:
             records.extend(parse_file(file_path))
+
+        records = apply_corrections_to_rows(records, load_corrections(Path(args.corrections).expanduser()))
 
         if args.sort:
             records.sort(key=row_sort_key)

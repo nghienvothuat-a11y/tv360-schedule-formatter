@@ -1,0 +1,8 @@
+# File tu dien sua chinh ta khi xuat ket qua.
+# Moi dong dung dinh dang:
+# sai => dung
+#
+# Vi du:
+# viẹt nam => Việt Nam
+# thơi sự => thời sự
+# truyên hình => truyền hình

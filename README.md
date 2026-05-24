@@ -36,6 +36,7 @@ http://127.0.0.1:8765
 ```
 
 Trên web app, chọn nhiều file `.txt` hoặc `.xlsx`, bấm `Xem trước` để kiểm tra kết quả parse, rồi bấm `Xuất Excel` để tải file `.xlsx`.
+Nếu bật checkbox `Sửa chính tả`, web app sẽ áp dụng các cặp sửa trong `corrections.txt`; nếu không bật thì giữ nguyên tiêu đề sau bước chuẩn hóa format.
 
 Nếu muốn đổi port:
 
@@ -62,6 +63,20 @@ Chỉ xuất các cột chính `STT`, `Thứ ngày`, `Tiêu đề chương trìn
 python3 format_tv360_schedule.py samples -o output/lich_tv360_minimal.xlsx --minimal
 ```
 
+Sửa chính tả tiêu đề theo file từ điển:
+
+```bash
+python3 format_tv360_schedule.py samples -o output/lich_tv360.xlsx --corrections corrections.txt
+```
+
+File `corrections.txt` dùng cú pháp mỗi dòng một cặp:
+
+```text
+viẹt nam => Việt Nam
+thơi sự => thời sự
+truyên hình => truyền hình
+```
+
 Sắp xếp theo giờ phát sóng:
 
 ```bash
@@ -76,7 +91,8 @@ python3 format_tv360_schedule.py samples --dry-run
 
 ## Ghi chú
 
-- Tool không tự dịch hoặc sửa chính tả tiêu đề chương trình, vì tiêu đề tiếng Việt nên được giữ đúng theo nguồn.
+- Tool không tự dịch hoặc tự đoán sửa chính tả tiêu đề chương trình, vì tiêu đề tiếng Việt nên được giữ đúng theo nguồn.
+- Tool chỉ sửa chính tả theo các cặp trong `corrections.txt`; không tự đoán/sửa ngoài từ điển này.
 - Text nằm trong ngoặc như `(HD)`, `[Tập 12]`, `{Live}` sẽ bị loại khỏi tiêu đề khi xuất Excel.
 - Tiêu đề chương trình trong output được chuẩn hóa kiểu chỉ viết hoa chữ cái đầu câu.
 - Tên chương trình và số tập/số phát sóng được ngăn cách bằng dấu `-`, ví dụ `Phim tài liệu - tập 13`.

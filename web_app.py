@@ -14,8 +14,10 @@ from urllib.parse import parse_qs, urlparse
 
 from format_tv360_schedule import (
     ScheduleRow,
+    apply_corrections_to_rows,
     build_workbook_rows,
     decode_text_bytes,
+    load_corrections,
     parse_xlsx_bytes,
     parse_text,
     row_sort_key,
@@ -188,6 +190,8 @@ class Tv360Handler(BaseHTTPRequestHandler):
                 rows.extend(parse_xlsx_bytes(content, filename))
             else:
                 rows.extend(parse_text(decode_text_bytes(content), filename))
+        if fields.get("corrections") == "true":
+            rows = apply_corrections_to_rows(rows, load_corrections())
         return rows, fields
 
     def send_static(self, filename: str) -> None:

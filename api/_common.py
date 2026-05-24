@@ -6,7 +6,14 @@ from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler
 from pathlib import Path
 
-from format_tv360_schedule import ScheduleRow, decode_text_bytes, parse_text, parse_xlsx_bytes
+from format_tv360_schedule import (
+    ScheduleRow,
+    apply_corrections_to_rows,
+    decode_text_bytes,
+    load_corrections,
+    parse_text,
+    parse_xlsx_bytes,
+)
 
 
 MAX_UPLOAD_BYTES = 50 * 1024 * 1024
@@ -99,6 +106,8 @@ def read_uploaded_rows(handler: BaseHTTPRequestHandler) -> tuple[list[ScheduleRo
             rows.extend(parse_xlsx_bytes(content, filename))
         else:
             rows.extend(parse_text(decode_text_bytes(content), filename))
+    if fields.get("corrections") == "true":
+        rows = apply_corrections_to_rows(rows, load_corrections())
     return rows, fields
 
 

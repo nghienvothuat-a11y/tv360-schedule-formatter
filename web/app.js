@@ -2,6 +2,7 @@ const form = document.querySelector("#upload-form");
 const fileInput = document.querySelector("#files");
 const sortInput = document.querySelector("#sort");
 const minimalInput = document.querySelector("#minimal");
+const correctionsInput = document.querySelector("#corrections");
 const outputNameInput = document.querySelector("#output-name");
 const previewButton = document.querySelector("#preview-button");
 const exportButton = document.querySelector("#export-button");
@@ -69,6 +70,7 @@ function makeFormData(files = selectedFiles()) {
   }
   data.append("sort", sortInput.checked ? "true" : "false");
   data.append("minimal", minimalInput.checked ? "true" : "false");
+  data.append("corrections", correctionsInput.checked ? "true" : "false");
   return data;
 }
 
