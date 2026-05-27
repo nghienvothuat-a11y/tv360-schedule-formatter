@@ -1,13 +1,11 @@
 from __future__ import annotations
 
-import tempfile
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler
-from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 from api._common import read_uploaded_rows, safe_filename, send_json
-from format_tv360_schedule import build_workbook_rows, row_sort_key, write_xlsx
+from format_tv360_schedule import build_workbook_rows, build_xlsx_bytes, row_sort_key
 
 
 class handler(BaseHTTPRequestHandler):
@@ -24,15 +22,13 @@ class handler(BaseHTTPRequestHandler):
                 output_name += ".xlsx"
 
             workbook_rows = build_workbook_rows(rows, minimal)
-            with tempfile.NamedTemporaryFile(suffix=".xlsx", delete=True) as temp_file:
-                write_xlsx(Path(temp_file.name), workbook_rows, minimal)
-                temp_file.seek(0)
-                payload = temp_file.read()
+            payload = build_xlsx_bytes(workbook_rows, minimal)
 
             self.send_response(HTTPStatus.OK)
             self.send_header("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
             self.send_header("Content-Length", str(len(payload)))
             self.send_header("Content-Disposition", f'attachment; filename="{output_name}"')
+            self.send_header("X-Content-Type-Options", "nosniff")
             self.end_headers()
             self.wfile.write(payload)
         except ValueError as error:

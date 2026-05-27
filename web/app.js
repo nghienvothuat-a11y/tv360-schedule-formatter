@@ -45,7 +45,7 @@ function outputNameForFiles(files) {
   if (files.length === 1) {
     return outputNameForFile(files[0]);
   }
-  return `${files.length} file Excel riêng`;
+  return "output_lich_tv360.xlsx";
 }
 
 function formatFileSize(size) {
@@ -100,7 +100,7 @@ function renderSelectedFiles() {
     name.textContent = file.name;
 
     const meta = document.createElement("span");
-    meta.textContent = `${formatFileSize(file.size)} -> ${outputNameForFile(file)}`;
+    meta.textContent = formatFileSize(file.size);
 
     const removeButton = document.createElement("button");
     removeButton.type = "button";
@@ -222,6 +222,35 @@ async function preview() {
   }
 }
 
+async function responseErrorMessage(response, fallback) {
+  const contentType = response.headers.get("content-type") || "";
+  if (contentType.includes("application/json")) {
+    const payload = await response.json();
+    return payload.error || fallback;
+  }
+
+  const text = await response.text();
+  return text.trim() || fallback;
+}
+
+function downloadBlob(blob, filename) {
+  if (window.navigator.msSaveOrOpenBlob) {
+    window.navigator.msSaveOrOpenBlob(blob, filename);
+    return;
+  }
+
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  link.rel = "noopener";
+  link.style.display = "none";
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 30000);
+}
+
 async function exportExcel() {
   const files = selectedFiles();
   if (!files.length) {
@@ -231,37 +260,23 @@ async function exportExcel() {
 
   exportButton.disabled = true;
   previewButton.disabled = true;
-  setStatus(`Đang tạo ${files.length} file Excel riêng...`);
+  const requestedName = outputNameForFiles(files);
+  outputNameInput.value = requestedName;
+  setStatus(`Đang tạo ${requestedName}...`);
 
   try {
-    for (const [index, file] of files.entries()) {
-      const requestedName = outputNameForFile(file);
-      outputNameInput.value = requestedName;
-      setStatus(`Đang tạo ${requestedName} (${index + 1}/${files.length})...`);
+    const response = await fetch(`/api/export?name=${encodeURIComponent(requestedName)}`, {
+      method: "POST",
+      body: makeFormData(files),
+    });
 
-      const response = await fetch(`/api/export?name=${encodeURIComponent(requestedName)}`, {
-        method: "POST",
-        body: makeFormData([file]),
-      });
-
-      if (!response.ok) {
-        const payload = await response.json();
-        throw new Error(payload.error || `Không thể tạo file Excel cho ${file.name}.`);
-      }
-
-      const blob = await response.blob();
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = requestedName;
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      URL.revokeObjectURL(url);
+    if (!response.ok) {
+      throw new Error(await responseErrorMessage(response, "Không thể tạo file Excel."));
     }
 
-    outputNameInput.value = outputNameForFiles(files);
-    setStatus(`Đã tạo ${files.length} file Excel riêng.`, "ok");
+    const blob = await response.blob();
+    downloadBlob(blob, requestedName);
+    setStatus(`Đã tạo ${requestedName}.`, "ok");
   } catch (error) {
     setStatus(error.message, "error");
   } finally {

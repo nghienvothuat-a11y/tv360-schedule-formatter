@@ -628,12 +628,12 @@ def make_sheet_xml(rows: list[list[object]], widths: list[int]) -> str:
 </worksheet>"""
 
 
-def write_xlsx(path: Path, rows: list[list[object]], minimal: bool) -> None:
+def xlsx_archive_files(rows: list[list[object]], minimal: bool) -> dict[str, str]:
     widths = [8, 22, 46, 22] if minimal else [8, 22, 46, 22, 24, 12, 70]
     sheet_xml = make_sheet_xml(rows, widths)
     now = dt.datetime.now(dt.UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
-    files = {
+    return {
         "[Content_Types].xml": """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
   <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
@@ -693,10 +693,18 @@ def write_xlsx(path: Path, rows: list[list[object]], minimal: bool) -> None:
         "xl/worksheets/sheet1.xml": sheet_xml,
     }
 
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with zipfile.ZipFile(path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
-        for name, content in files.items():
+
+def build_xlsx_bytes(rows: list[list[object]], minimal: bool) -> bytes:
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+        for name, content in xlsx_archive_files(rows, minimal).items():
             archive.writestr(name, content)
+    return buffer.getvalue()
+
+
+def write_xlsx(path: Path, rows: list[list[object]], minimal: bool) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(build_xlsx_bytes(rows, minimal))
 
 
 def build_workbook_rows(records: list[ScheduleRow], minimal: bool) -> list[list[object]]:
