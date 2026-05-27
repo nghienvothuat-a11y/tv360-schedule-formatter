@@ -35,6 +35,7 @@ TITLE_TRIM_RE = re.compile(r"^[\s:;\-|–—~•*]+|[\s:;\-|–—~]+$")
 EPISODE_RE = re.compile(r"\s*(?:[-–—]\s*)?\b(?P<label>tập|tap|số|so)\s+(?P<number>[0-9]+[A-Za-z]?)\b", re.IGNORECASE)
 DAY_HEADER_RE = re.compile(r"^(?:thứ\s+\w+|chủ\s*nhật|cn)\s*(?:\([^)]*\))?$", re.IGNORECASE)
 DATE_IN_DAY_RE = re.compile(r"\((?P<day>\d{1,2})/(?P<month>\d{1,2})(?:/(?P<year>\d{2,4}))?\)")
+DATE_TEXT_RE = re.compile(r"(?P<day>\d{1,2})[/-](?P<month>\d{1,2})(?:[/-](?P<year>\d{2,4}))?")
 MINUTE_ONLY_RE = re.compile(r"^(?:[0-5]?\d)$")
 XML_ROW_RE = re.compile(r"<row\b[^>]*>.*?</row>", re.DOTALL)
 XML_CELL_RE = re.compile(r"<c\b(?P<attrs>[^>]*)>(?P<body>.*?)</c>", re.DOTALL)
@@ -44,6 +45,26 @@ XML_VALUE_RE = re.compile(r"<v\b[^>]*>(.*?)</v>", re.DOTALL)
 XML_SHARED_ITEM_RE = re.compile(r"<si\b[^>]*>(.*?)</si>", re.DOTALL)
 SUPPORTED_INPUT_EXTENSIONS = {".txt", ".xlsx"}
 DEFAULT_CORRECTIONS_PATH = Path(__file__).resolve().with_name("corrections.txt")
+TV360_METADATA_HEADERS = [
+    "Main Title",
+    "Main Language",
+    "Start Time",
+    "End Time",
+    "Main Synopsis",
+    "Rating",
+    "Video Type",
+    "Director",
+    "Actor",
+    "Price",
+    "Fx Point",
+    "Series Key",
+    "Episode Key",
+    "Is Last Episode",
+    "Poster Url",
+    "VOD AssetID",
+    "ProductID",
+    "CPIP",
+]
 BRACKETED_TEXT_RES = (
     re.compile(r"\s*\([^()]*\)\s*"),
     re.compile(r"\s*\[[^\[\]]*\]\s*"),
@@ -364,6 +385,85 @@ def row_sort_key(row: ScheduleRow) -> tuple[tuple[int, int, str], tuple[int, str
     return (schedule_day_sort_key(row.schedule_day), airtime_sort_key(row.airtime), row.title)
 
 
+def parse_date_text(value: str) -> dt.date | None:
+    match = DATE_TEXT_RE.search(value)
+    if not match:
+        return None
+
+    year_text = match.group("year")
+    current_year = dt.date.today().year
+    if year_text is None:
+        year = current_year
+    else:
+        year = int(year_text)
+        if year < 100:
+            year += 2000
+
+    try:
+        return dt.date(year, int(match.group("month")), int(match.group("day")))
+    except ValueError:
+        return None
+
+
+def parse_airtime_time(value: str) -> dt.time | None:
+    match = re.match(r"\s*(?P<hour>\d{1,2}):(?P<minute>\d{2})\s*$", value)
+    if not match:
+        return None
+    try:
+        return dt.time(int(match.group("hour")), int(match.group("minute")))
+    except ValueError:
+        return None
+
+
+def row_schedule_dates(records: list[ScheduleRow]) -> list[dt.date]:
+    first_date = next((date for row in records if (date := parse_date_text(row.schedule_day))), None)
+    fallback_date = first_date or dt.date.today()
+    current_date = first_date
+    dates: list[dt.date] = []
+    for row in records:
+        row_date = parse_date_text(row.schedule_day)
+        if row_date is not None:
+            current_date = row_date
+        dates.append(current_date or fallback_date)
+    return dates
+
+
+def metadata_start_end_datetimes(records: list[ScheduleRow]) -> list[tuple[dt.datetime, dt.datetime]]:
+    dates = row_schedule_dates(records)
+    starts: list[dt.datetime] = []
+    explicit_ends: list[dt.datetime | None] = []
+
+    for row, schedule_date in zip(records, dates, strict=True):
+        start_text, *end_parts = [part.strip() for part in row.airtime.split("-", 1)]
+        start_time = parse_airtime_time(start_text) or dt.time(0, 0)
+        start = dt.datetime.combine(schedule_date, start_time)
+        starts.append(start)
+
+        end = None
+        if end_parts:
+            end_time = parse_airtime_time(end_parts[0])
+            if end_time is not None:
+                end = dt.datetime.combine(schedule_date, end_time)
+                if end <= start:
+                    end += dt.timedelta(days=1)
+        explicit_ends.append(end)
+
+    result: list[tuple[dt.datetime, dt.datetime]] = []
+    for index, start in enumerate(starts):
+        if explicit_ends[index] is not None:
+            end = explicit_ends[index]
+        elif index + 1 < len(starts) and dates[index + 1] == dates[index] and starts[index + 1] > start:
+            end = starts[index + 1]
+        else:
+            end = dt.datetime.combine(dates[index], dt.time(23, 59, 59))
+        result.append((start, end))
+    return result
+
+
+def tv360_datetime_text(value: dt.datetime) -> str:
+    return value.strftime("%Y%m%d%H%M%S")
+
+
 def xlsx_lines_from_cells(values: list[str]) -> list[str]:
     time_cells = [(index, value) for index, value in enumerate(values) if is_pure_time_cell(value)]
     if not time_cells:
@@ -629,7 +729,8 @@ def make_sheet_xml(rows: list[list[object]], widths: list[int]) -> str:
 
 
 def xlsx_archive_files(rows: list[list[object]], minimal: bool) -> dict[str, str]:
-    widths = [8, 22, 46, 22] if minimal else [8, 22, 46, 22, 24, 12, 70]
+    widths = [8, 22, 46, 22] if minimal else [36, 16, 20, 20, 46, 10, 12, 20, 20, 10, 12, 18, 18, 16, 28, 16, 16, 12]
+    sheet_name = "Lich phat song" if minimal else "Metadata"
     sheet_xml = make_sheet_xml(rows, widths)
     now = dt.datetime.now(dt.UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
@@ -661,10 +762,10 @@ def xlsx_archive_files(rows: list[list[object]], minimal: bool) -> dict[str, str
   <dcterms:created xsi:type="dcterms:W3CDTF">{now}</dcterms:created>
   <dcterms:modified xsi:type="dcterms:W3CDTF">{now}</dcterms:modified>
 </cp:coreProperties>""",
-        "xl/workbook.xml": """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+        "xl/workbook.xml": f"""<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
   <sheets>
-    <sheet name="Lich phat song" sheetId="1" r:id="rId1"/>
+    <sheet name="{sheet_name}" sheetId="1" r:id="rId1"/>
   </sheets>
 </workbook>""",
         "xl/_rels/workbook.xml.rels": """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
@@ -713,19 +814,31 @@ def build_workbook_rows(records: list[ScheduleRow], minimal: bool) -> list[list[
         rows.extend([[index, row.schedule_day, row.title, row.airtime] for index, row in enumerate(records, start=1)])
         return rows
 
-    rows = [["STT", "Thứ ngày", "Tiêu đề chương trình", "Thời gian phát sóng", "Nguồn file", "Dòng", "Dòng gốc"]]
-    rows.extend(
-        [
-            index,
-            row.schedule_day,
-            row.title,
-            row.airtime,
-            row.source,
-            row.source_line,
-            row.raw_text,
-        ]
-        for index, row in enumerate(records, start=1)
-    )
+    rows = [TV360_METADATA_HEADERS]
+    rows.extend([[""] * len(TV360_METADATA_HEADERS) for _ in range(17)])
+    for row, (start, end) in zip(records, metadata_start_end_datetimes(records), strict=True):
+        rows.append(
+            [
+                row.title,
+                "vie",
+                tv360_datetime_text(start),
+                tv360_datetime_text(end),
+                row.title,
+                "0",
+                "HD",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+            ]
+        )
     return rows
 
 

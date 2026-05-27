@@ -27,7 +27,7 @@ from format_tv360_schedule import (
 ROOT = Path(__file__).resolve().parent
 STATIC_DIR = ROOT / "web"
 MAX_UPLOAD_BYTES = 50 * 1024 * 1024
-SAFE_FILENAME_RE = re.compile(r"[^A-Za-z0-9_. -]+")
+SAFE_FILENAME_RE = re.compile(r'[<>:"/\\|?*\x00-\x1f]+')
 
 
 def safe_filename(value: str) -> str:

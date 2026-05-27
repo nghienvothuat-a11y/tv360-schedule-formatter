@@ -10,15 +10,28 @@ Tool nhỏ để chuẩn hóa nhiều file text hoặc Excel lịch phát sóng 
 - `08:00-08:30 Thiếu nhi`
 - `09h` rồi tiêu đề ở dòng kế tiếp
 
-Đầu ra mặc định là file `.xlsx` có các cột:
+Đầu ra mặc định là file `.xlsx` theo format metadata TV360: sheet `Metadata`, header ở dòng 1, dữ liệu bắt đầu từ dòng 19, với các cột:
 
-- `STT`
-- `Thứ ngày`
-- `Tiêu đề chương trình`
-- `Thời gian phát sóng`
-- `Nguồn file`
-- `Dòng`
-- `Dòng gốc`
+- `Main Title`
+- `Main Language`
+- `Start Time`
+- `End Time`
+- `Main Synopsis`
+- `Rating`
+- `Video Type`
+- `Director`
+- `Actor`
+- `Price`
+- `Fx Point`
+- `Series Key`
+- `Episode Key`
+- `Is Last Episode`
+- `Poster Url`
+- `VOD AssetID`
+- `ProductID`
+- `CPIP`
+
+Trong đó `Main Language` mặc định là `vie`, `Rating` là `0`, `Video Type` là `HD`, `Main Synopsis` lấy cùng nội dung với `Main Title`, và `Start Time`/`End Time` có dạng `yyyymmddHHMMSS`.
 
 ## Cách dùng
 
@@ -35,8 +48,10 @@ Sau đó mở:
 http://127.0.0.1:8765
 ```
 
-Trên web app, chọn nhiều file `.txt` hoặc `.xlsx`, bấm `Xem trước` để kiểm tra kết quả parse, rồi bấm `Xuất Excel` để tải file `.xlsx`.
+Trên web app, chọn nhiều file `.txt` hoặc `.xlsx`, bấm `Xem trước` để kiểm tra kết quả parse, rồi bấm `Xuất Excel` để tải file `.xlsx` theo format metadata TV360.
+Nếu chọn nhiều file đầu vào, web app sẽ xuất riêng từng file, ví dụ `lich_vtv3.xlsx` thành `output_lich_vtv3.xlsx`.
 Nếu bật checkbox `Sửa chính tả`, web app sẽ áp dụng các cặp sửa trong `corrections.txt`; nếu không bật thì giữ nguyên tiêu đề sau bước chuẩn hóa format.
+Nếu bật checkbox `Cột chính`, file export sẽ dùng format rút gọn gồm `STT`, `Thứ ngày`, `Tiêu đề chương trình`, `Thời gian phát sóng`.
 
 Nếu muốn đổi port:
 

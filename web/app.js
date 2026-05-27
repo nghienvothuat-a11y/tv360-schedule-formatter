@@ -31,7 +31,7 @@ function baseName(filename) {
 function safeOutputPart(value) {
   return value
     .normalize("NFC")
-    .replace(/[^A-Za-z0-9_. -]+/g, "_")
+    .replace(/[<>:"/\\|?*\u0000-\u001f]+/g, "_")
     .replace(/^[ ._]+|[ ._]+$/g, "") || "lich_tv360";
 }
 
@@ -46,7 +46,7 @@ function outputNameForFiles(files) {
   if (files.length === 1) {
     return outputNameForFile(files[0]);
   }
-  return "output_lich_tv360.xlsx";
+  return `${files.length} file export riêng`;
 }
 
 function formatFileSize(size) {
@@ -291,6 +291,96 @@ function columnName(index) {
   return result;
 }
 
+function parseScheduleDate(value) {
+  const match = String(value || "").match(/(\d{1,2})[/-](\d{1,2})(?:[/-](\d{2,4}))?/);
+  if (!match) {
+    return null;
+  }
+  let year = match[3] ? Number(match[3]) : new Date().getFullYear();
+  if (year < 100) {
+    year += 2000;
+  }
+  const date = new Date(year, Number(match[2]) - 1, Number(match[1]));
+  if (date.getFullYear() !== year || date.getMonth() !== Number(match[2]) - 1 || date.getDate() !== Number(match[1])) {
+    return null;
+  }
+  return date;
+}
+
+function parseAirtime(value) {
+  const match = String(value || "").trim().match(/^(\d{1,2}):(\d{2})$/);
+  if (!match) {
+    return null;
+  }
+  const hour = Number(match[1]);
+  const minute = Number(match[2]);
+  if (hour > 23 || minute > 59) {
+    return null;
+  }
+  return { hour, minute };
+}
+
+function rowScheduleDates(records) {
+  const firstDate = records.map((item) => parseScheduleDate(item.schedule_day)).find(Boolean) || new Date();
+  let currentDate = firstDate;
+  return records.map((item) => {
+    const parsed = parseScheduleDate(item.schedule_day);
+    if (parsed) {
+      currentDate = parsed;
+    }
+    return new Date(currentDate.getFullYear(), currentDate.getMonth(), currentDate.getDate());
+  });
+}
+
+function sameDate(left, right) {
+  return left.getFullYear() === right.getFullYear() && left.getMonth() === right.getMonth() && left.getDate() === right.getDate();
+}
+
+function addDays(value, days) {
+  return new Date(value.getFullYear(), value.getMonth(), value.getDate() + days, value.getHours(), value.getMinutes(), value.getSeconds());
+}
+
+function metadataStartEndDates(records) {
+  const dates = rowScheduleDates(records);
+  const starts = [];
+  const explicitEnds = [];
+
+  records.forEach((item, index) => {
+    const [startText, endText] = String(item.airtime || "").split("-", 2).map((part) => part.trim());
+    const startParts = parseAirtime(startText) || { hour: 0, minute: 0 };
+    const start = new Date(dates[index].getFullYear(), dates[index].getMonth(), dates[index].getDate(), startParts.hour, startParts.minute, 0);
+    starts.push(start);
+
+    const endParts = parseAirtime(endText);
+    if (endParts) {
+      let end = new Date(dates[index].getFullYear(), dates[index].getMonth(), dates[index].getDate(), endParts.hour, endParts.minute, 0);
+      if (end <= start) {
+        end = addDays(end, 1);
+      }
+      explicitEnds.push(end);
+    } else {
+      explicitEnds.push(null);
+    }
+  });
+
+  return records.map((item, index) => {
+    const start = starts[index];
+    let end = explicitEnds[index];
+    if (!end && starts[index + 1] && sameDate(dates[index + 1], dates[index]) && starts[index + 1] > start) {
+      end = starts[index + 1];
+    }
+    if (!end) {
+      end = new Date(dates[index].getFullYear(), dates[index].getMonth(), dates[index].getDate(), 23, 59, 59);
+    }
+    return { start, end };
+  });
+}
+
+function tv360DateTime(value) {
+  const pad = (number, length = 2) => String(number).padStart(length, "0");
+  return `${value.getFullYear()}${pad(value.getMonth() + 1)}${pad(value.getDate())}${pad(value.getHours())}${pad(value.getMinutes())}${pad(value.getSeconds())}`;
+}
+
 function makeCell(row, col, value, style = 0) {
   const ref = `${columnName(col)}${row}`;
   const styleAttr = style ? ` s="${style}"` : "";
@@ -333,23 +423,60 @@ function workbookRows(records, minimal) {
     return rows;
   }
 
-  const rows = [["STT", "Thứ ngày", "Tiêu đề chương trình", "Thời gian phát sóng", "Nguồn file", "Dòng", "Dòng gốc"]];
+  const headers = [
+    "Main Title",
+    "Main Language",
+    "Start Time",
+    "End Time",
+    "Main Synopsis",
+    "Rating",
+    "Video Type",
+    "Director",
+    "Actor",
+    "Price",
+    "Fx Point",
+    "Series Key",
+    "Episode Key",
+    "Is Last Episode",
+    "Poster Url",
+    "VOD AssetID",
+    "ProductID",
+    "CPIP",
+  ];
+  const rows = [headers];
+  for (let index = 0; index < 17; index += 1) {
+    rows.push(Array(headers.length).fill(""));
+  }
+  const ranges = metadataStartEndDates(records);
   records.forEach((item, index) => {
+    const title = item.title || "";
     rows.push([
-      index + 1,
-      item.schedule_day || "",
-      item.title || "",
-      item.airtime || "",
-      item.source || "",
-      item.source_line || "",
-      item.raw_text || "",
+      title,
+      "vie",
+      tv360DateTime(ranges[index].start),
+      tv360DateTime(ranges[index].end),
+      title,
+      "0",
+      "HD",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
     ]);
   });
   return rows;
 }
 
 function xlsxFiles(rows, minimal) {
-  const widths = minimal ? [8, 22, 46, 22] : [8, 22, 46, 22, 24, 12, 70];
+  const widths = minimal ? [8, 22, 46, 22] : [36, 16, 20, 20, 46, 10, 12, 20, 20, 10, 12, 18, 18, 16, 28, 16, 16, 12];
+  const sheetName = minimal ? "Lich phat song" : "Metadata";
   const now = new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
 
   return {
@@ -383,7 +510,7 @@ function xlsxFiles(rows, minimal) {
     "xl/workbook.xml": `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
   <sheets>
-    <sheet name="Lich phat song" sheetId="1" r:id="rId1"/>
+    <sheet name="${sheetName}" sheetId="1" r:id="rId1"/>
   </sheets>
 </workbook>`,
     "xl/_rels/workbook.xml.rels": `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
@@ -539,17 +666,26 @@ async function exportExcel() {
 
   exportButton.disabled = true;
   previewButton.disabled = true;
-  const requestedName = outputNameForFiles(files);
-  outputNameInput.value = requestedName;
-  setStatus(`Đang tạo ${requestedName}...`);
+  outputNameInput.value = outputNameForFiles(files);
+  setStatus(files.length === 1 ? `Đang tạo ${outputNameForFile(files[0])}...` : `Đang tạo ${files.length} file export riêng...`);
 
   try {
-    const payload = await loadPreviewRows(files);
-    rowCount.textContent = String(payload.count);
-    renderRows(payload.rows);
-    const blob = buildXlsxBlob(payload.rows, minimalInput.checked);
-    downloadBlob(blob, requestedName);
-    setStatus(`Đã tạo ${requestedName}.`, "ok");
+    const allRows = [];
+    let totalCount = 0;
+
+    for (const file of files) {
+      const payload = await loadPreviewRows([file]);
+      totalCount += payload.count;
+      allRows.push(...payload.rows);
+
+      const filename = outputNameForFile(file);
+      const blob = buildXlsxBlob(payload.rows, minimalInput.checked);
+      downloadBlob(blob, filename);
+    }
+
+    rowCount.textContent = String(totalCount);
+    renderRows(allRows.map((row, index) => ({ ...row, stt: index + 1 })));
+    setStatus(files.length === 1 ? `Đã tạo ${outputNameForFile(files[0])}.` : `Đã tạo ${files.length} file export riêng.`, "ok");
   } catch (error) {
     setStatus(error.message, "error");
   } finally {
